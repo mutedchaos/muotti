@@ -1,0 +1,19 @@
+{
+  "name": "muotti",
+  "version": "0.0.1",
+  "description": "",
+  "main": "dist/index.js",
+  "scripts": {
+    "test": "jest",
+    "prepare": "npm run lint && npm run build",
+    "build": "npm run tsc",
+    "tsc": "tsc --project tsconfig.json",
+    "lint": "eslint . --ext .js,.ts"
+  },
+  "author": "",
+  "license": "ISC",
+  "devDependencies": {
+    "@types/react": "^17.0.15",
+    "typescript": "^4.3.5"
+  }
+}
