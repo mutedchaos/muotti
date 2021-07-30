@@ -23,8 +23,8 @@ function DebugItem({ label, value }: Item) {
   const [active, setActive] = useState(false)
   return (
     <div>
-      <label>
-        <input type="checkbox" checked={active} onClick={() => setActive((x) => !x)} /> {label}
+      <label className={value ? '' : 'missing'}>
+        <input disabled={!value} type="checkbox" checked={active} onClick={() => setActive((x) => !x)} /> {label}
       </label>
       {active && <div className="debug-entry">{JSON.stringify(value, null, 2)}</div>}
       <hr />

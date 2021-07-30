@@ -59,3 +59,25 @@
 .debug-layout > :first-child {
   flex-grow: 1;
 }
+
+form {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+form > * {
+  margin-bottom: 10px;
+}
+
+.missing {
+  text-decoration: line-through;
+}
+
+.invalid {
+  outline: 1px solid red;
+}
+
+.error {
+  color: red;
+}

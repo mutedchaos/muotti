@@ -1,13 +1,19 @@
-import React, { useState } from 'react'
-import logo from './logo.svg'
+import React, { useEffect, useState } from 'react'
 import './App.css'
 import Simple from './Examples/Simple'
+import Validation from './Examples/Validation'
 
-const modules = [{ label: 'Simple', component: Simple }]
+const modules = [
+  { label: 'Simple', component: Simple },
+  { label: 'Validation', component: Validation },
+]
 
 function App() {
-  const [active, setActive] = useState('Simple')
+  const [active, setActive] = useState(localStorage.getItem('muotti-demo-selection') ?? 'Simple')
   const Component = modules.find((m) => m.label === active)!.component
+  useEffect(() => {
+    localStorage.setItem('muotti-demo-selection', active)
+  }, [active])
   return (
     <div className="App">
       <div>
