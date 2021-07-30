@@ -6,25 +6,40 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.useMuotti = void 0;
 const react_1 = require("react");
 const compact_1 = __importDefault(require("./utils/compact"));
-function useMuotti({ pristineState, onSubmit }) {
+function useMuotti({ pristineState, onSubmit, validateFully }) {
     const [state, updateValue] = react_1.useReducer((state, update) => (Object.assign(Object.assign({}, state), update)), pristineState);
+    const [submitted, setSubmitted] = react_1.useState(false);
+    const [dirtyFields, setDirtyFields] = react_1.useState([]);
     const [validationRules, setValidationRules] = react_1.useState([]);
+    const allValidationErrors = react_1.useMemo(() => compact_1.default(validationRules.map((rule) => rule(state))), [state, validationRules]);
     const handleSubmit = react_1.useCallback((e) => {
         e === null || e === void 0 ? void 0 : e.preventDefault();
+        setSubmitted(true);
+        if (allValidationErrors.length)
+            return;
         onSubmit === null || onSubmit === void 0 ? void 0 : onSubmit(state);
-    }, [onSubmit, state]);
-    const validationErrors = react_1.useMemo(() => compact_1.default(validationRules.map((rule) => rule(state))), [state, validationRules]);
+    }, [allValidationErrors.length, onSubmit, state]);
+    const validationErrors = react_1.useMemo(() => {
+        if (submitted || validateFully)
+            return allValidationErrors;
+        return allValidationErrors.filter((ve) => ve && typeof ve !== 'string' && ve.blame.some((blamedField) => dirtyFields.includes(blamedField)));
+    }, [allValidationErrors, dirtyFields, submitted, validateFully]);
     const rawFields = Object.fromEntries(Object.keys(pristineState).map((untypedKey) => {
         var _a;
         const key = untypedKey;
         const fieldValidationErrors = validationErrors.filter((ve) => ve && typeof ve !== 'string' && ve.blame.includes(key)).map((ve) => ve.message);
+        const isDirty = dirtyFields.includes(key);
         return [
             untypedKey,
             {
                 // eslint-disable-next-line react-hooks/rules-of-hooks
                 handleChange: react_1.useCallback((e) => {
                     updateValue({ [key]: e.target.value });
-                }, [key]),
+                    if (!isDirty) {
+                        setDirtyFields((old) => [...old, key]);
+                    }
+                }, [key, isDirty]),
+                isDirty,
                 isValid: fieldValidationErrors.length === 0,
                 validationErrors: fieldValidationErrors,
                 validationError: (_a = fieldValidationErrors[0]) !== null && _a !== void 0 ? _a : null,

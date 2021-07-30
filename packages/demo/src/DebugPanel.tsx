@@ -24,7 +24,7 @@ function DebugItem({ label, value }: Item) {
   return (
     <div>
       <label className={value ? '' : 'missing'}>
-        <input disabled={!value} type="checkbox" checked={active} onClick={() => setActive((x) => !x)} /> {label}
+        <input disabled={!value} type="checkbox" checked={active} onChange={() => setActive((x) => !x)} /> {label}
       </label>
       {active && <div className="debug-entry">{JSON.stringify(value, null, 2)}</div>}
       <hr />

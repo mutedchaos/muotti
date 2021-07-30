@@ -6,12 +6,14 @@ type ValidationResult<TState> = false | null | undefined | string | { blame: Arr
 interface Options<TState> {
   pristineState: TState
   onSubmit?(state: TState): Promise<void> | void
+  validateFully?: boolean
 }
 
 type FieldOfType<T> = {
   handleChange(e: { target: { value: T } }): void
   value: T
   isValid: boolean
+  isDirty: boolean
   validationError: string | null
   validationErrors: string[]
 }
@@ -38,22 +40,36 @@ interface Muotti<TState> {
   validationErrors: Array<{ fields: Array<keyof TState>; message: string }>
 }
 
-export function useMuotti<TState>({ pristineState, onSubmit }: Options<TState>): Muotti<TState> {
+export function useMuotti<TState>({ pristineState, onSubmit, validateFully }: Options<TState>): Muotti<TState> {
   const [state, updateValue] = useReducer(
     (state: TState, update: Partial<TState>) => ({ ...state, ...update }),
     pristineState
   )
 
+  const [submitted, setSubmitted] = useState(false)
+  const [dirtyFields, setDirtyFields] = useState<Array<keyof TState>>([])
+
   const [validationRules, setValidationRules] = useState<ValidationRule<TState>[]>([])
+  const allValidationErrors = useMemo(
+    () => compact(validationRules.map((rule) => rule(state))),
+    [state, validationRules]
+  )
   const handleSubmit = useCallback<Muotti<TState>['handleSubmit']>(
     (e) => {
       e?.preventDefault()
+      setSubmitted(true)
+      if (allValidationErrors.length) return
       onSubmit?.(state)
     },
-    [onSubmit, state]
+    [allValidationErrors.length, onSubmit, state]
   )
 
-  const validationErrors = useMemo(() => compact(validationRules.map((rule) => rule(state))), [state, validationRules])
+  const validationErrors = useMemo(() => {
+    if (submitted || validateFully) return allValidationErrors
+    return allValidationErrors.filter(
+      (ve) => ve && typeof ve !== 'string' && ve.blame.some((blamedField) => dirtyFields.includes(blamedField))
+    )
+  }, [allValidationErrors, dirtyFields, submitted, validateFully])
 
   const rawFields = Object.fromEntries(
     Object.keys(pristineState).map<[string, FieldOfType<any>]>((untypedKey) => {
@@ -64,6 +80,7 @@ export function useMuotti<TState>({ pristineState, onSubmit }: Options<TState>):
           message: string
         }>
       ).map((ve) => ve.message)
+      const isDirty = dirtyFields.includes(key)
       return [
         untypedKey,
         {
@@ -71,9 +88,13 @@ export function useMuotti<TState>({ pristineState, onSubmit }: Options<TState>):
           handleChange: useCallback<FieldOfType<any>['handleChange']>(
             (e) => {
               updateValue({ [key]: e.target.value } as any)
+              if (!isDirty) {
+                setDirtyFields((old) => [...old, key])
+              }
             },
-            [key]
+            [key, isDirty]
           ),
+          isDirty,
           isValid: fieldValidationErrors.length === 0,
           validationErrors: fieldValidationErrors,
           validationError: fieldValidationErrors[0] ?? null,

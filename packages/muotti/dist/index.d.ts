@@ -6,6 +6,7 @@ declare type ValidationResult<TState> = false | null | undefined | string | {
 interface Options<TState> {
     pristineState: TState;
     onSubmit?(state: TState): Promise<void> | void;
+    validateFully?: boolean;
 }
 declare type FieldOfType<T> = {
     handleChange(e: {
@@ -15,6 +16,7 @@ declare type FieldOfType<T> = {
     }): void;
     value: T;
     isValid: boolean;
+    isDirty: boolean;
     validationError: string | null;
     validationErrors: string[];
 };
@@ -35,5 +37,5 @@ interface Muotti<TState> {
         message: string;
     }>;
 }
-export declare function useMuotti<TState>({ pristineState, onSubmit }: Options<TState>): Muotti<TState>;
+export declare function useMuotti<TState>({ pristineState, onSubmit, validateFully }: Options<TState>): Muotti<TState>;
 export {};

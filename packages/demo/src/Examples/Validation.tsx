@@ -1,5 +1,5 @@
 import { useMuotti } from 'muotti'
-import { useMemo, useState } from 'react'
+import { useCallback, useMemo, useState } from 'react'
 import { DebugLayout } from '../DebugPanel'
 
 interface State {
@@ -16,12 +16,21 @@ export default function Validation() {
       setSubmitted(state)
     },
   })
-  useValidationRule('val1', (val) => !val && 'Value is required')
-  useValidationRule('val2', (val) => !val && 'Value is required')
   useValidationRule(
-    (state) => +state.val1 + +state.val2 >= 100 && { blame: ['val1', 'val2'], message: 'Sum must be below 100' }
+    'val1',
+    useCallback((val) => !val && 'Value is required', [])
   )
-  useValidationRule((state) => (state.val1.includes('9') ? 'Val1 cannot include a 9' : ''))
+  useValidationRule(
+    'val2',
+    useCallback((val) => !val && 'Value is required', [])
+  )
+  useValidationRule(
+    useCallback(
+      (state) => +state.val1 + +state.val2 >= 100 && { blame: ['val1', 'val2'], message: 'Sum must be below 100' },
+      []
+    )
+  )
+  useValidationRule(useCallback((state) => (state.val1.includes('9') ? 'Val1 cannot include a 9' : ''), []))
   return (
     <DebugLayout
       items={[
