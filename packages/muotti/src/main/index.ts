@@ -1,46 +1,54 @@
-import React, { useCallback, useEffect, useMemo, useReducer, useState } from 'react'
-import compact from './utils/compact'
+import React, { useCallback, useMemo, useReducer, useState } from 'react'
 
-type ValidationResult<TState> = false | null | undefined | string | { blame: Array<keyof TState>; message: string }
+export const unspecifiedField = Symbol('muotti-unspecified-field')
 
-interface Options<TState> {
+type ValidationErrors<TState, TValidationError> = Array<{ field: keyof TState | null; error: TValidationError }>
+type ValidationResult<TState, TValidationError> = {
+  [key in keyof TState]?: TValidationError
+} & { [unspecifiedField]?: TValidationError }
+
+interface Options<TState, TValidationError> {
   pristineState: TState
   onSubmit?(state: TState): Promise<void> | void
   validateFully?: boolean
+  validation?:
+    | Array<ValidationResult<TState, TValidationError>>
+    | ((
+        state: TState
+      ) =>
+        | Array<ValidationResult<TState, TValidationError>>
+        | IterableIterator<ValidationResult<TState, TValidationError>>)
 }
 
-type FieldOfType<T> = {
-  handleChange(e: { target: { value: T } }): void
-  value: T
+type FieldOfType<TValue, TValidationError> = {
+  handleChange(e: { target: { value: TValue } }): void
+  value: TValue
   isValid: boolean
   isDirty: boolean
-  validationError: string | null
-  validationErrors: string[]
+  validationError: TValidationError | null
+  validationErrors: TValidationError[]
 }
 
-type Field<TState> = {
-  [K in keyof TState]: FieldOfType<TState[K]>
+type Field<TState, TValidationError> = {
+  [K in keyof TState]: FieldOfType<TState[K], TValidationError>
 }
 
-type ValidationRule<TState> = (state: TState) => ValidationResult<TState>
-
-interface Muotti<TState> {
+interface Muotti<TState, TValidationError> {
   state: TState
   handleSubmit(e?: React.FormEvent<HTMLFormElement> | React.MouseEvent<HTMLButtonElement>): void
-  fields: Field<TState>
-  useValidationRule<T extends keyof TState>(
-    field: T,
-    rule: (value: TState[T], state: TState) => ValidationResult<TState>
-  ): void
-  useValidationRule(rule: (state: TState) => ValidationResult<TState>): void
-
+  fields: Field<TState, TValidationError>
   isValid: boolean
-  otherValidationError: string | null
-  otherValidationErrors: string[]
-  validationErrors: Array<{ fields: Array<keyof TState>; message: string }>
+  otherValidationError: TValidationError | null
+  otherValidationErrors: TValidationError[]
+  validationErrors: ValidationErrors<TState, TValidationError>
 }
 
-export function useMuotti<TState>({ pristineState, onSubmit, validateFully }: Options<TState>): Muotti<TState> {
+export function useMuotti<TState, TValidationError = string>({
+  pristineState,
+  onSubmit,
+  validateFully,
+  validation,
+}: Options<TState, TValidationError>): Muotti<TState, TValidationError> {
   const [state, updateValue] = useReducer(
     (state: TState, update: Partial<TState>) => ({ ...state, ...update }),
     pristineState
@@ -49,43 +57,49 @@ export function useMuotti<TState>({ pristineState, onSubmit, validateFully }: Op
   const [submitted, setSubmitted] = useState(false)
   const [dirtyFields, setDirtyFields] = useState<Array<keyof TState>>([])
 
-  const [validationRules, setValidationRules] = useState<ValidationRule<TState>[]>([])
-  const allValidationErrors = useMemo(
-    () => compact(validationRules.map((rule) => rule(state))),
-    [state, validationRules]
-  )
-  const handleSubmit = useCallback<Muotti<TState>['handleSubmit']>(
+  const allValidationErrors = useMemo(() => {
+    if (!validation) return []
+    const errors = Array.isArray(validation) ? validation : Array.from(validation(state))
+    return errors.reduce((errorsSoFar, errorObject) => {
+      // TODO: this is terrible use of reduce, make this cleaner
+      for (const key of Object.keys(errorObject) as Array<keyof TState>) {
+        errorsSoFar.push({ field: key, error: errorObject[key] as any })
+      }
+      if (unspecifiedField in errorObject) {
+        errorsSoFar.push({ field: null, error: errorObject[unspecifiedField] as any })
+      }
+      return errorsSoFar
+    }, [] as ValidationErrors<TState, TValidationError>)
+  }, [state, validation])
+
+  const anyValidationErrors = allValidationErrors.length > 0
+
+  const handleSubmit = useCallback<Muotti<TState, TValidationError>['handleSubmit']>(
     (e) => {
       e?.preventDefault()
       setSubmitted(true)
-      if (allValidationErrors.length) return
+      if (anyValidationErrors) return
       onSubmit?.(state)
     },
-    [allValidationErrors.length, onSubmit, state]
+    [anyValidationErrors, onSubmit, state]
   )
 
-  const validationErrors = useMemo(() => {
+  const relevantValidationErrors = useMemo<ValidationErrors<TState, TValidationError>>(() => {
     if (submitted || validateFully) return allValidationErrors
-    return allValidationErrors.filter(
-      (ve) => ve && typeof ve !== 'string' && ve.blame.some((blamedField) => dirtyFields.includes(blamedField))
-    )
+
+    return allValidationErrors.filter((error) => dirtyFields.includes(error.field as any))
   }, [allValidationErrors, dirtyFields, submitted, validateFully])
 
   const rawFields = Object.fromEntries(
-    Object.keys(pristineState).map<[string, FieldOfType<any>]>((untypedKey) => {
+    Object.keys(pristineState).map<[string, FieldOfType<any, TValidationError>]>((untypedKey) => {
       const key = untypedKey as keyof TState
-      const fieldValidationErrors = (
-        validationErrors.filter((ve) => ve && typeof ve !== 'string' && ve.blame.includes(key)) as Array<{
-          blame: Array<keyof TState>
-          message: string
-        }>
-      ).map((ve) => ve.message)
+      const fieldValidationErrors = relevantValidationErrors.filter((ve) => ve.field === key).map((ve) => ve.error)
       const isDirty = dirtyFields.includes(key)
       return [
         untypedKey,
         {
           // eslint-disable-next-line react-hooks/rules-of-hooks
-          handleChange: useCallback<FieldOfType<any>['handleChange']>(
+          handleChange: useCallback<FieldOfType<any, TValidationError>['handleChange']>(
             (e) => {
               updateValue({ [key]: e.target.value } as any)
               if (!isDirty) {
@@ -104,63 +118,24 @@ export function useMuotti<TState>({ pristineState, onSubmit, validateFully }: Op
     })
   )
 
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  const fields = useMemo<Muotti<TState>['fields']>(() => ({ ...rawFields } as any), [...Object.values(rawFields)])
-
-  const useValidationRule = useCallback<Muotti<TState>['useValidationRule']>(
-    (
-      ...args:
-        | [keyof TState, (field: any, state: TState) => ValidationResult<TState>]
-        | [(state: TState) => ValidationResult<TState>]
-    ) => {
-      // eslint-disable-next-line react-hooks/rules-of-hooks
-      useEffect(() => {
-        const arg0 = args[0]
-        const arg1 = args[1]
-        if (typeof arg0 === 'function') {
-          setValidationRules((old) => [...old, arg0])
-          return () => {
-            setValidationRules((old) => old.filter((x) => x !== arg0))
-          }
-        } else {
-          const field = arg0,
-            rule = arg1
-          if (!rule) throw new Error('Invalid rule')
-          const ruleFn: ValidationRule<TState> = (state) => {
-            const output = rule(state[field], state)
-            if (output && typeof output === 'string') {
-              return { blame: [field], message: output }
-            }
-          }
-          setValidationRules((old) => [...old, ruleFn])
-          return () => {
-            setValidationRules((old) => old.filter((x) => x !== ruleFn))
-          }
-        }
-        // eslint-disable-next-line react-hooks/exhaustive-deps
-      }, [state, args[0], args[1]])
-    },
-    [state]
+  const fields = useMemo<Muotti<TState, TValidationError>['fields']>(
+    () => ({ ...rawFields } as any),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [...Object.values(rawFields)]
   )
-  const formattedValidationErrors = useMemo(
-    () =>
-      validationErrors.map((ve) =>
-        typeof ve === 'string' ? { fields: [], message: ve } : { fields: ve.blame, message: ve.message }
-      ),
-    []
+  const otherValidationErrors = useMemo<Muotti<TState, TValidationError>['otherValidationErrors']>(
+    () => relevantValidationErrors.filter((x) => x.field === null).map((x) => x.error),
+    [relevantValidationErrors]
   )
-
-  return useMemo<Muotti<TState>>(() => {
-    const otherValidationErrors = validationErrors.filter((x) => typeof x === 'string') as string[]
+  return useMemo<Muotti<TState, TValidationError>>(() => {
     return {
       state,
       handleSubmit,
       fields,
-      useValidationRule,
-      isValid: validationErrors.length === 0,
-      otherValidationErrors,
+      isValid: relevantValidationErrors.length === 0,
+      otherValidationErrors: otherValidationErrors,
       otherValidationError: otherValidationErrors[0] ?? null,
-      validationErrors: formattedValidationErrors,
+      validationErrors: relevantValidationErrors,
     }
-  }, [fields, formattedValidationErrors, handleSubmit, state, useValidationRule, validationErrors])
+  }, [state, handleSubmit, fields, relevantValidationErrors, otherValidationErrors])
 }

@@ -1,41 +1,43 @@
 import React from 'react';
-declare type ValidationResult<TState> = false | null | undefined | string | {
-    blame: Array<keyof TState>;
-    message: string;
+export declare const unspecifiedField: unique symbol;
+declare type ValidationErrors<TState, TValidationError> = Array<{
+    field: keyof TState | null;
+    error: TValidationError;
+}>;
+declare type ValidationResult<TState, TValidationError> = {
+    [key in keyof TState]?: TValidationError;
+} & {
+    [unspecifiedField]?: TValidationError;
 };
-interface Options<TState> {
+interface Options<TState, TValidationError> {
     pristineState: TState;
     onSubmit?(state: TState): Promise<void> | void;
     validateFully?: boolean;
+    validation?: Array<ValidationResult<TState, TValidationError>> | ((state: TState) => Array<ValidationResult<TState, TValidationError>> | IterableIterator<ValidationResult<TState, TValidationError>>);
 }
-declare type FieldOfType<T> = {
+declare type FieldOfType<TValue, TValidationError> = {
     handleChange(e: {
         target: {
-            value: T;
+            value: TValue;
         };
     }): void;
-    value: T;
+    value: TValue;
     isValid: boolean;
     isDirty: boolean;
-    validationError: string | null;
-    validationErrors: string[];
+    validationError: TValidationError | null;
+    validationErrors: TValidationError[];
 };
-declare type Field<TState> = {
-    [K in keyof TState]: FieldOfType<TState[K]>;
+declare type Field<TState, TValidationError> = {
+    [K in keyof TState]: FieldOfType<TState[K], TValidationError>;
 };
-interface Muotti<TState> {
+interface Muotti<TState, TValidationError> {
     state: TState;
     handleSubmit(e?: React.FormEvent<HTMLFormElement> | React.MouseEvent<HTMLButtonElement>): void;
-    fields: Field<TState>;
-    useValidationRule<T extends keyof TState>(field: T, rule: (value: TState[T], state: TState) => ValidationResult<TState>): void;
-    useValidationRule(rule: (state: TState) => ValidationResult<TState>): void;
+    fields: Field<TState, TValidationError>;
     isValid: boolean;
-    otherValidationError: string | null;
-    otherValidationErrors: string[];
-    validationErrors: Array<{
-        fields: Array<keyof TState>;
-        message: string;
-    }>;
+    otherValidationError: TValidationError | null;
+    otherValidationErrors: TValidationError[];
+    validationErrors: ValidationErrors<TState, TValidationError>;
 }
-export declare function useMuotti<TState>({ pristineState, onSubmit, validateFully }: Options<TState>): Muotti<TState>;
+export declare function useMuotti<TState, TValidationError = string>({ pristineState, onSubmit, validateFully, validation, }: Options<TState, TValidationError>): Muotti<TState, TValidationError>;
 export {};

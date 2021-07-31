@@ -1,4 +1,4 @@
-import { useMuotti } from 'muotti'
+import { unspecifiedField, useMuotti } from 'muotti'
 import { useCallback, useMemo, useState } from 'react'
 import { DebugLayout } from '../DebugPanel'
 
@@ -10,31 +10,31 @@ interface State {
 export default function Validation() {
   const pristineState = useMemo<State>(() => ({ val1: '', val2: '' }), [])
   const [submitted, setSubmitted] = useState<State | null>(null)
-  const { state, fields, handleSubmit, isValid, otherValidationError, useValidationRule } = useMuotti({
+  const { state, fields, handleSubmit, isValid, otherValidationError, validationErrors } = useMuotti({
     pristineState,
     onSubmit(state) {
       setSubmitted(state)
     },
+    validation: useCallback(function* (state: State) {
+      if (!state.val1) yield { val1: 'Value is required' }
+      if (!state.val2) yield { val2: 'Value is required' }
+      if (+state.val1 + +state.val2 >= 100) {
+        yield {
+          val1: 'Sum must be below 100',
+          val2: 'Sum must be below 100',
+        }
+      }
+      if (state.val1.includes('9')) {
+        yield { [unspecifiedField]: 'Val1 cannot include a 9' }
+      }
+    }, []),
   })
-  useValidationRule(
-    'val1',
-    useCallback((val) => !val && 'Value is required', [])
-  )
-  useValidationRule(
-    'val2',
-    useCallback((val) => !val && 'Value is required', [])
-  )
-  useValidationRule(
-    useCallback(
-      (state) => +state.val1 + +state.val2 >= 100 && { blame: ['val1', 'val2'], message: 'Sum must be below 100' },
-      []
-    )
-  )
-  useValidationRule(useCallback((state) => (state.val1.includes('9') ? 'Val1 cannot include a 9' : ''), []))
+
   return (
     <DebugLayout
       items={[
         { label: 'State', value: state },
+        { label: 'Validation', value: validationErrors },
         { label: 'Submitted', value: submitted },
       ]}
     >
